@@ -1,0 +1,60 @@
+name: NEXORA CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  quality-and-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nexora_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nexora_ci?schema=public
+      AUTH_SECRET: ci-only-secret-key-minimum-32-chars-nexora-2026
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client & apply schema
+        run: |
+          npx prisma generate
+          npx prisma db push
+
+      - name: Lint & Typecheck
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Unit & Integration Tests
+        run: npm run test:unit
+
+      - name: Build Next.js
+        run: npm run build
